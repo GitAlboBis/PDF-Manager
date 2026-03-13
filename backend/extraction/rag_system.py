@@ -249,30 +249,64 @@ class RAGSystem:
 
     @staticmethod
     def _pattern_extract(field_name: str, text: str) -> str | None:
-        """Apply field-specific patterns to extract a value from text."""
+        """Apply field-specific patterns to extract a value from text.
+
+        Patterns use non-capturing groups ``(?:...)`` to support common
+        synonyms across different PDF layouts (e.g. "Name", "Full Name",
+        "Applicant Name" all map to the ``name`` field).
+        """
         fn = field_name.lower().replace(" ", "_")
 
         patterns: dict[str, re.Pattern] = {
-            "name": re.compile(r"^Name\s+(.+)$", re.M | re.I),
-            "cell_phone": re.compile(r"Cell\s*Phone\s*:?\s*(\d{10})", re.I),
-            "home_phone": re.compile(r"Home\s*Phone\s*:?\s*(\d{10})", re.I),
-            "work_phone": re.compile(r"Work\s*Phone\s*:?\s*(\d{10})", re.I),
-            "email": re.compile(r"[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z]{2,}"),
-            "city": re.compile(r"City\s*:\s*([A-Za-z\s]+?)(?:\s+State|\s+Zip|\n|$)", re.I),
-            "state": re.compile(r"State\s*:\s*([A-Z]{2})", re.I),
-            "zip_code": re.compile(r"Zip\s*Code\s*:?\s*(\d{5}(?:-\d{4})?)", re.I),
+            "name": re.compile(
+                r"(?:Name|Full\s*Name|Applicant\s*Name)\s*:?\s*(.+)",
+                re.M | re.I,
+            ),
+            "cell_phone": re.compile(
+                r"(?:Cell\s*Phone|Cell|Mobile(?:\s*Phone)?)\s*:?\s*(\d[\d\s\-().]{7,})",
+                re.I,
+            ),
+            "home_phone": re.compile(
+                r"(?:Home\s*Phone|Home\s*Tel|Telephone)\s*:?\s*(\d[\d\s\-().]{7,})",
+                re.I,
+            ),
+            "work_phone": re.compile(
+                r"(?:Work\s*Phone|Office\s*Phone|Business\s*Phone)\s*:?\s*(\d[\d\s\-().]{7,})",
+                re.I,
+            ),
+            "email": re.compile(
+                r"[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z]{2,}",
+            ),
+            "city": re.compile(
+                r"(?:City|Town|Municipality)\s*:?\s*([A-Za-z\s]+?)(?:\s+(?:State|Province|Zip|Postal)|[,\n]|$)",
+                re.I,
+            ),
+            "state": re.compile(
+                r"(?:State|Province|Region)\s*:?\s*([A-Z]{2})",
+                re.I,
+            ),
+            "zip_code": re.compile(
+                r"(?:Zip\s*Code|Zip|Postal\s*Code|ZIP)\s*:?\s*(\d{5}(?:-\d{4})?)",
+                re.I,
+            ),
             "street_address": re.compile(
-                r"Street\s+Address\s*:?\s*(.+?)(?:\n|City\s*:)", re.I | re.S
+                r"(?:Street\s*Address|Address|Mailing\s*Address)\s*:?\s*(.+?)(?:\n|(?:City|Town)\s*:|$)",
+                re.I | re.S,
             ),
         }
 
         pat = patterns.get(fn)
         if pat is None:
-            # Generic: try "FieldName: value"
-            generic = re.compile(
-                rf"{re.escape(field_name)}\s*:?\s*(.+?)(?:\n|$)", re.I
-            )
-            m = generic.search(text)
+            # Generic fallback: try "FieldName: value" (multiline-aware)
+            try:
+                generic = re.compile(
+                    rf"(?:{re.escape(field_name)})\s*:?\s*(.+?)(?:\n|$)",
+                    re.I | re.M,
+                )
+                m = generic.search(text)
+            except re.error:
+                # If the field name itself breaks regex, give up gracefully
+                return None
             return m.group(1).strip() if m else None
 
         m = pat.search(text)

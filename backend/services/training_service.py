@@ -367,6 +367,19 @@ class TrainingService:
                     field["field_value"] = common_val
                     field["confidence"] = _TRAINING_CONFIDENCE
                     field["confidence_source"] = "training"
+            elif not _is_blank(fval) and fname in training_by_field:
+                # Overwrite low-similarity incorrect values with training data
+                common_val = self._most_common(training_by_field[fname])
+                if common_val and _string_similarity(fval, common_val) < 0.60:
+                    logger.info(
+                        "TrainingService: overwriting field '%s' value '%s' "
+                        "→ '%s' (similarity %.2f < 0.60)",
+                        fname, fval, common_val,
+                        _string_similarity(fval, common_val),
+                    )
+                    field["field_value"] = common_val
+                    field["confidence"] = _TRAINING_CONFIDENCE
+                    field["confidence_source"] = "training_corrected"
 
             result.append(field)
 

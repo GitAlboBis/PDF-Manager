@@ -11,9 +11,16 @@ class SmartFieldMatcher:
             return 1.0
         elif extracted_value in expected_value:
             return 0.9
-        elif re.search(expected_value, extracted_value):
-            return 0.8
         else:
+            # Use re.escape to safely match expected_value as a literal
+            # string, preventing crashes from special regex characters
+            # (e.g. parentheses, '+', '*') in the expected value.
+            try:
+                if re.search(re.escape(expected_value), extracted_value):
+                    return 0.8
+            except re.error:
+                # Fallback: if regex still fails for any reason, return 0.0
+                pass
             return 0.0
 
     def match_fields(self, extracted_fields: Dict[str, str], expected_fields: Dict[str, str]) -> List[Tuple[str, float]]:
